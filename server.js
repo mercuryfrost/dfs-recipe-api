@@ -31,24 +31,26 @@ app.get("/recipe", async (req, res) => {
     const data = await loadRecipes();
     const lower = name.toLowerCase();
 
-    const results = Object.values(data).filter((item) =>
-      item.item_output?.toLowerCase().includes(lower)
-    );
+    const results = Object.values(data)
+      .filter(item =>
+        item.item_output &&
+        item.item_output.toLowerCase().includes(lower)
+      )
+      .map(item => ({
+        id: item.id,
+        item_output: item.item_output,
+        ingredient1: item.ingredient1,
+        ingredient2: item.ingredient2,
+        ingredient3: item.ingredient3
+      }));
 
     if (results.length === 0) {
       return res.status(404).json({ message: "No recipes found" });
     }
 
-    // Return just the first match
-    const match = results[0];
-
-    res.json({
-      id: match.id,
-      item_output: match.item_output,
-      ingredient1: match.ingredient1,
-      ingredient2: match.ingredient2,
-      ingredient3: match.ingredient3
-    });
+    // ✅ Pretty JSON for browser readability, still fine for LSL
+    res.setHeader("Content-Type", "application/json");
+    res.send(JSON.stringify(results, null, 2));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
