@@ -40,10 +40,12 @@ app.get("/recipe", async (req, res) => {
       recipe.item_output && recipe.item_output.toLowerCase().includes(name)
     );
 
+  const totalPages = Math.ceil(matches.length / limit);
+  const currentPage = Math.floor(start / limit) + 1;
+
   const sliced = matches.slice(start, start + limit);
 
   if (human === "html") {
-    // Return simple HTML with image previews
     let html = `<html><head><title>DFS Recipes: ${name}</title></head><body>`;
     html += `<h1>DFS Recipes Matching: "${name}"</h1>`;
     sliced.forEach(recipe => {
@@ -58,13 +60,30 @@ app.get("/recipe", async (req, res) => {
         html += `<img src="${recipe.img_url}" alt="Recipe Image" style="max-width:300px;"><br>`;
       }
     });
-    html += `<p>Page ${Math.floor(start / limit) + 1} of ${Math.ceil(matches.length / limit)}</p>`;
-    html += `</body></html>`;
+
+    const baseUrl = `/recipe?name=${encodeURIComponent(name)}&limit=${limit}&human=html`;
+
+    const prevStart = Math.max(0, start - limit);
+    const nextStart = start + limit < matches.length ? start + limit : start;
+
+    html += `<p>Page ${currentPage} of ${totalPages}</p><p>`;
+    if (start > 0) {
+      html += `<a href="${baseUrl}&start=${prevStart}">⬅ Previous</a> `;
+    } else {
+      html += `⬅ Previous `;
+    }
+
+    if (start + limit < matches.length) {
+      html += `<a href="${baseUrl}&start=${nextStart}">Next ➡</a>`;
+    } else {
+      html += `Next ➡`;
+    }
+
+    html += `</p></body></html>`;
     return res.send(html);
   }
 
   if (human) {
-    // Pretty JSON version
     res.setHeader("Content-Type", "application/json");
     return res.send(JSON.stringify({
       total: matches.length,
@@ -72,12 +91,12 @@ app.get("/recipe", async (req, res) => {
     }, null, 2));
   }
 
-  // Standard API JSON response
   res.json({
     total: matches.length,
     results: sliced
   });
 });
+
 
 app.get("/", (req, res) => {
   res.send("DFS Recipe API is running.");
