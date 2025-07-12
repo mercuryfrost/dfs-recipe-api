@@ -23,6 +23,9 @@ async function loadRecipes() {
 
 app.get("/recipe", async (req, res) => {
   const name = req.query.name;
+  const start = parseInt(req.query.start || "0");
+  const limit = parseInt(req.query.limit || "10");
+
   if (!name) {
     return res.status(400).json({ error: "Missing 'name' query parameter" });
   }
@@ -31,7 +34,7 @@ app.get("/recipe", async (req, res) => {
     const data = await loadRecipes();
     const lower = name.toLowerCase();
 
-    const results = Object.values(data)
+    const filtered = Object.values(data)
       .filter(item =>
         item.item_output &&
         item.item_output.toLowerCase().includes(lower)
@@ -44,17 +47,28 @@ app.get("/recipe", async (req, res) => {
         ingredient3: item.ingredient3
       }));
 
-    if (results.length === 0) {
-      return res.status(404).json({ message: "No recipes found" });
-    }
+    const sliced = filtered.slice(start, start + limit);
 
-    // ✅ Pretty JSON for browser readability, still fine for LSL
+    const payload = {
+      results: sliced,
+      total: filtered.length,
+      start: start,
+      limit: limit
+    };
+
+    // Human-readable but still compact: one object per line
+    const json = "{\n" +
+      `"results":[\n` +
+      sliced.map(r => JSON.stringify(r)).join(",\n") +
+      `\n],\n"total":${filtered.length},"start":${start},"limit":${limit}\n}`;
+
     res.setHeader("Content-Type", "application/json");
-    res.send(JSON.stringify(results, null, 2));
+    res.send(json);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
+
 
 app.get("/", (req, res) => {
   res.send("DFS Recipe API is running.");
