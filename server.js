@@ -4,67 +4,82 @@ const fetch = require("node-fetch");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-app.use(cors());
-
-const DFS_JSON_URL = "https://www.digitalfarmsystem.com/recipes.json";
 const PER_PAGE = 10;
 
+app.use(cors());
+
+app.get("/", (req, res) => {
+  res.send(`
+    <html>
+      <body style="font-family: sans-serif; padding: 2em;">
+        <h1>DFS Recipe Search API</h1>
+        <p>Use this endpoint to search <code>recipes.json</code> by recipe name.</p>
+
+        <h2>Examples</h2>
+        <ul>
+          <li><a href="/recipe?name=strawberry">/recipe?name=strawberry</a> — JSON results</li>
+          <li><a href="/recipe?name=strawberry&human=1">/recipe?name=strawberry&human=1</a> — HTML view</li>
+          <li><a href="/recipe?name=strawberry&human=1&page=2">/recipe?name=strawberry&human=1&page=2</a> — HTML, page 2</li>
+        </ul>
+
+        <p>Each page contains 10 results. Images and up to 9 ingredients shown in human mode.</p>
+        <p style="font-size: small; margin-top: 3em;">This is a personal proxy for use with LSL in Second Life. Not affiliated with DFS.</p>
+      </body>
+    </html>
+  `);
+});
+
 app.get("/recipe", async (req, res) => {
-  const search = (req.query.name || "").toLowerCase();
-  const human = req.query.human === "1";
-  const page = parseInt(req.query.page || "1");
+  const { name = "", human = false, page = 1 } = req.query;
 
-  let data;
   try {
-    const response = await fetch(DFS_JSON_URL);
-    if (!response.ok) throw new Error("Network response not ok");
-    data = await response.json();
+    const response = await fetch("https://www.digitalfarmsystem.com/recipes.json");
+    if (!response.ok) throw new Error("Failed to fetch recipes.json");
+    const raw = await response.json();
+
+    const recipes = Object.values(raw).filter(r =>
+      r.item_output && r.item_output.toLowerCase().includes(name.toLowerCase())
+    );
+
+    if (human) {
+      const pageNum = parseInt(page) || 1;
+      const totalPages = Math.ceil(recipes.length / PER_PAGE);
+      const paged = recipes.slice((pageNum - 1) * PER_PAGE, pageNum * PER_PAGE);
+
+      const html = `
+        <html>
+        <body style="font-family: sans-serif; padding: 2em;">
+          <h1>Results for "${name}"</h1>
+          <p>Showing page ${pageNum} of ${totalPages} (${recipes.length} total results)</p>
+          ${paged.map(r => `
+            <div style="margin-bottom: 2em;">
+              <h2>${r.item_output}</h2>
+              ${r.img_url ? `<img src="${r.img_url}" style="max-width: 300px; display:block; margin-bottom: 1em;">` : ""}
+              <ul>
+                ${Array.from({ length: 9 }).map((_, i) => {
+                  const key = `ingredient${i + 1}`;
+                  return r[key] ? `<li>${r[key]}</li>` : "";
+                }).join("")}
+              </ul>
+            </div>
+          `).join("")}
+          <div style="margin-top: 2em;">
+            ${pageNum > 1 ? `<a href="/recipe?name=${name}&human=1&page=${pageNum - 1}">Previous</a>` : ""}
+            ${pageNum < totalPages ? ` | <a href="/recipe?name=${name}&human=1&page=${pageNum + 1}">Next</a>` : ""}
+          </div>
+        </body>
+        </html>
+      `;
+      res.send(html);
+    } else {
+      res.json(recipes);
+    }
   } catch (err) {
-    return res.status(500).json({ error: "Failed to fetch recipes.json" });
+    console.error("Error fetching recipes.json:", err.message);
+    res.status(500).json({ error: "Failed to fetch recipes.json" });
   }
-
-  const results = [];
-
-  for (const [id, recipe] of Object.entries(data)) {
-    const name = recipe.item_output?.toLowerCase() || "";
-    if (name.includes(search)) {
-      results.push(recipe);
-    }
-  }
-
-  const totalPages = Math.ceil(results.length / PER_PAGE);
-  const paginatedResults = results.slice((page - 1) * PER_PAGE, page * PER_PAGE);
-
-  if (human) {
-    let html = `<html><body><h2>DFS Recipes matching: <code>${search}</code></h2>`;
-    html += `<p>Page ${page} of ${totalPages} (${results.length} results total)</p>`;
-    for (const recipe of paginatedResults) {
-      html += `<hr><strong>${recipe.item_output}</strong><br>`;
-      for (let i = 1; i <= 9; i++) {
-        const ing = recipe["ingredient" + i];
-        if (ing) html += `- ${ing}<br>`;
-      }
-      if (recipe.img_url) {
-        html += `<img src="${recipe.img_url}" width="128"><br>`;
-      }
-    }
-
-    html += `<hr><p>`;
-    for (let i = 1; i <= totalPages; i++) {
-      html += `<a href="/recipe?name=${encodeURIComponent(search)}&human=1&page=${i}">[${i}]</a> `;
-    }
-    html += `</p></body></html>`;
-    return res.send(html);
-  }
-
-  return res.json({
-    page,
-    total_pages: totalPages,
-    per_page: PER_PAGE,
-    results: paginatedResults,
-  });
 });
 
 app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+  console.log(`DFS Recipe API listening on port ${PORT}`);
 });
