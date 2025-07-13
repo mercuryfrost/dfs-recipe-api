@@ -4,82 +4,87 @@ const fetch = require("node-fetch");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const PER_PAGE = 10;
+
+const RECIPE_JSON_URL = "https://www.digitalfarmsystem.com/recipes.json";
+
+let cache = {
+  timestamp: 0,
+  data: {}
+};
+
+async function fetchRecipes() {
+  try {
+    const response = await fetch(RECIPE_JSON_URL);
+    const json = await response.json();
+    cache = {
+      timestamp: Date.now(),
+      data: json
+    };
+  } catch (err) {
+    console.error("Failed to fetch recipes.json", err);
+  }
+}
 
 app.use(cors());
 
 app.get("/", (req, res) => {
   res.send(`
-    <html>
-      <body style="font-family: sans-serif; padding: 2em;">
-        <h1>DFS Recipe Search API</h1>
-        <p>Use this endpoint to search <code>recipes.json</code> by recipe name.</p>
-
-        <h2>Examples</h2>
-        <ul>
-          <li><a href="/recipe?name=strawberry">/recipe?name=strawberry</a> — JSON results</li>
-          <li><a href="/recipe?name=strawberry&human=1">/recipe?name=strawberry&human=1</a> — HTML view</li>
-          <li><a href="/recipe?name=strawberry&human=1&page=2">/recipe?name=strawberry&human=1&page=2</a> — HTML, page 2</li>
-        </ul>
-
-        <p>Each page contains 10 results. Images and up to 9 ingredients shown in human mode.</p>
-        <p style="font-size: small; margin-top: 3em;">This is a personal proxy for use with LSL in Second Life. Not affiliated with DFS.</p>
-      </body>
-    </html>
+    <h1>DFS Recipe API</h1>
+    <p>Usage:</p>
+    <ul>
+      <li><code>/search?name=strawberry</code> – returns recipe names only, paginated</li>
+      <li><code>/recipe?name=DFS%20Strawberry%20Tartlets</code> – full detail lookup</li>
+    </ul>
   `);
 });
 
-app.get("/recipe", async (req, res) => {
-  const { name = "", human = false, page = 1 } = req.query;
+app.get("/search", async (req, res) => {
+  const nameQuery = (req.query.name || "").toLowerCase();
+  const page = parseInt(req.query.page) || 1;
+  const perPage = 9;
 
-  try {
-    const response = await fetch("https://www.digitalfarmsystem.com/recipes.json");
-    if (!response.ok) throw new Error("Failed to fetch recipes.json");
-    const raw = await response.json();
-
-    const recipes = Object.values(raw).filter(r =>
-      r.item_output && r.item_output.toLowerCase().includes(name.toLowerCase())
-    );
-
-    if (human) {
-      const pageNum = parseInt(page) || 1;
-      const totalPages = Math.ceil(recipes.length / PER_PAGE);
-      const paged = recipes.slice((pageNum - 1) * PER_PAGE, pageNum * PER_PAGE);
-
-      const html = `
-        <html>
-        <body style="font-family: sans-serif; padding: 2em;">
-          <h1>Results for "${name}"</h1>
-          <p>Showing page ${pageNum} of ${totalPages} (${recipes.length} total results)</p>
-          ${paged.map(r => `
-            <div style="margin-bottom: 2em;">
-              <h2>${r.item_output}</h2>
-              ${r.img_url ? `<img src="${r.img_url}" style="max-width: 300px; display:block; margin-bottom: 1em;">` : ""}
-              <ul>
-                ${Array.from({ length: 9 }).map((_, i) => {
-                  const key = `ingredient${i + 1}`;
-                  return r[key] ? `<li>${r[key]}</li>` : "";
-                }).join("")}
-              </ul>
-            </div>
-          `).join("")}
-          <div style="margin-top: 2em;">
-            ${pageNum > 1 ? `<a href="/recipe?name=${name}&human=1&page=${pageNum - 1}">Previous</a>` : ""}
-            ${pageNum < totalPages ? ` | <a href="/recipe?name=${name}&human=1&page=${pageNum + 1}">Next</a>` : ""}
-          </div>
-        </body>
-        </html>
-      `;
-      res.send(html);
-    } else {
-      res.json(recipes);
-    }
-  } catch (err) {
-    console.error("Error fetching recipes.json:", err.message);
-    res.status(500).json({ error: "Failed to fetch recipes.json" });
+  if (!cache.data || Object.keys(cache.data).length === 0) {
+    await fetchRecipes();
   }
+
+  const recipes = Object.values(cache.data);
+  const matched = recipes.filter(r => r.item_output && r.item_output.toLowerCase().includes(nameQuery));
+  const total = matched.length;
+  const pages = Math.ceil(total / perPage);
+  const results = matched
+    .slice((page - 1) * perPage, page * perPage)
+    .map(r => r.item_output);
+
+  res.json({
+    total,
+    page,
+    pages,
+    results
+  });
+});
+
+app.get("/recipe", async (req, res) => {
+  const name = req.query.name;
+
+  if (!name) {
+    return res.status(400).json({ error: "Missing 'name' query parameter." });
+  }
+
+  if (!cache.data || Object.keys(cache.data).length === 0) {
+    await fetchRecipes();
+  }
+
+  const recipes = Object.values(cache.data);
+  const match = recipes.find(r => r.item_output === name);
+
+  if (!match) {
+    return res.status(404).json({ error: "Recipe not found." });
+  }
+
+  res.json(match);
 });
 
 app.listen(PORT, () => {
-  console.log(`DFS Recipe API listening on port ${PORT}`);
+  console.log(`DFS API server running on port ${PORT}`);
+  fetchRecipes(); // Initial fetch
 });
