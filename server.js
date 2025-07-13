@@ -1,107 +1,107 @@
 const express = require("express");
+const fs = require("fs");
+const path = require("path");
+const cors = require("cors");
+
 const app = express();
-const fetch = require("node-fetch");
+app.use(cors());
 
-const PORT = process.env.PORT || 3000;
-const JSON_URL = "https://www.digitalfarmsystem.com/recipes.json";
+// Load full recipe data
+const recipes = JSON.parse(fs.readFileSync(path.join(__dirname, "recipes.json"), "utf8"));
 
-let recipes = {};
-let lastFetch = 0;
-const CACHE_TIME = 1000 * 60 * 10; // 10 minutes
+// Main route
+app.get("/recipe", async (req, res) => {
+  const {
+    name = "",
+    start = 0,
+    limit = 9999,
+    human,
+    maxChars = 2048
+  } = req.query;
 
-async function fetchRecipes() {
-  const now = Date.now();
-  if (now - lastFetch < CACHE_TIME && Object.keys(recipes).length > 0) return;
+  const query = name.toLowerCase();
+  const startIndex = parseInt(start) || 0;
+  const maxCharLimit = parseInt(maxChars) || 2048;
 
-  try {
-    const res = await fetch(JSON_URL);
-    const json = await res.json();
-    recipes = json;
-    lastFetch = now;
-  } catch (err) {
-    console.error("Failed to fetch recipes.json", err);
+  // Filter by search term
+  let matched = Object.values(recipes).filter(
+    recipe => recipe.item_output && recipe.item_output.toLowerCase().includes(query)
+  );
+
+  // Paginate with character cap
+  let results = [];
+  let charCount = 0;
+
+  for (let i = startIndex; i < matched.length; i++) {
+    const next = matched[i];
+    const testPayload = JSON.stringify([...results, next]);
+    if (testPayload.length > maxCharLimit) break;
+
+    results.push(next);
+    charCount = testPayload.length;
   }
+
+  const payload = {
+    query,
+    totalMatches: matched.length,
+    returned: results.length,
+    characterCount: charCount,
+    start: startIndex,
+    results
+  };
+
+  // Pretty JSON for debugging
+  if (human === "1" || human === "true") {
+    res.setHeader("Content-Type", "application/json");
+    return res.send(JSON.stringify(payload, null, 2));
+  }
+
+  // HTML rendering
+  if (human === "html") {
+    return res.send(renderHtml(results, startIndex, matched.length));
+  }
+
+  // Default: compact JSON for LSL
+  res.json(payload);
+});
+
+// Browser-friendly HTML output
+function renderHtml(results, start, total) {
+  const page = Math.floor(start / results.length) + 1;
+  const pages = Math.ceil(total / results.length);
+
+  const rows = results.map(recipe => {
+    const name = recipe.item_output || "Unnamed";
+    const img = recipe.img_url
+      ? `<img src="${recipe.img_url}" alt="" width="100"><br>`
+      : "";
+    const ingredients = Object.keys(recipe)
+      .filter(k => k.startsWith("ingredient") && recipe[k])
+      .map(k => `<li>${recipe[k]}</li>`)
+      .join("");
+
+    return `<div style="border:1px solid #ccc; margin:10px; padding:10px;">
+      ${img}
+      <strong>${name}</strong>
+      <ul>${ingredients}</ul>
+    </div>`;
+  }).join("");
+
+  return `
+    <html>
+      <head><title>DFS Recipes</title></head>
+      <body>
+        <h1>Recipes – Page ${page} of ${pages}</h1>
+        ${rows}
+        <hr>
+        <small>Total Matches: ${total}</small>
+      </body>
+    </html>
+  `;
 }
 
-app.get("/recipe", async (req, res) => {
-  const name = (req.query.name || "").toLowerCase();
-  const start = parseInt(req.query.start) || 0;
-  const limit = parseInt(req.query.limit) || 5;
-  const human = req.query.human;
-
-  await fetchRecipes();
-
-  if (!recipes || Object.keys(recipes).length === 0) {
-    return res.status(500).json({ error: "Failed to fetch recipes.json" });
-  }
-
-  const matches = Object.values(recipes)
-    .filter(recipe =>
-      recipe.item_output && recipe.item_output.toLowerCase().includes(name)
-    );
-
-  const totalPages = Math.ceil(matches.length / limit);
-  const currentPage = Math.floor(start / limit) + 1;
-
-  const sliced = matches.slice(start, start + limit);
-
-  if (human === "html") {
-    let html = `<html><head><title>DFS Recipes: ${name}</title></head><body>`;
-    html += `<h1>DFS Recipes Matching: "${name}"</h1>`;
-    sliced.forEach(recipe => {
-      html += `<hr/><h2>${recipe.item_output}</h2><ul>`;
-      for (let i = 1; i <= 9; i++) {
-        if (recipe[`ingredient${i}`]) {
-          html += `<li>${recipe[`ingredient${i}`]}</li>`;
-        }
-      }
-      html += `</ul>`;
-      if (recipe.img_url) {
-        html += `<img src="${recipe.img_url}" alt="Recipe Image" style="max-width:300px;"><br>`;
-      }
-    });
-
-    const baseUrl = `/recipe?name=${encodeURIComponent(name)}&limit=${limit}&human=html`;
-
-    const prevStart = Math.max(0, start - limit);
-    const nextStart = start + limit < matches.length ? start + limit : start;
-
-    html += `<p>Page ${currentPage} of ${totalPages}</p><p>`;
-    if (start > 0) {
-      html += `<a href="${baseUrl}&start=${prevStart}">⬅ Previous</a> `;
-    } else {
-      html += `⬅ Previous `;
-    }
-
-    if (start + limit < matches.length) {
-      html += `<a href="${baseUrl}&start=${nextStart}">Next ➡</a>`;
-    } else {
-      html += `Next ➡`;
-    }
-
-    html += `</p></body></html>`;
-    return res.send(html);
-  }
-
-  if (human) {
-    res.setHeader("Content-Type", "application/json");
-    return res.send(JSON.stringify({
-      total: matches.length,
-      results: sliced
-    }, null, 2));
-  }
-
-  res.json({
-    total: matches.length,
-    results: sliced
-  });
-});
-
-
-app.get("/", (req, res) => {
-  res.send("DFS Recipe API is running.");
-});
-
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+// Start server
+const port = process.env.PORT || 3000;
+app.listen(port, () => {
+  console.log(`DFS Recipe API listening on port ${port}`);
 });
