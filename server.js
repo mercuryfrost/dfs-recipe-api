@@ -8,7 +8,7 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 
 // Use name routes
-app.use("/", nameRoutes);
+app.use("/name", nameRoutes);
 
 // Root help page
 app.get("/", (req, res) => {
