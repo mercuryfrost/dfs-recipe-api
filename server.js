@@ -1,23 +1,24 @@
 const express = require("express");
 const cors = require("cors");
+const recipeRoutes = require("./routes/recipe");
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 
-// Routes
-const nameRoute = require("./routes/name");
-app.use("/name", nameRoute);
+// Use recipe routes
+app.use("/", recipeRoutes);
 
-// Homepage
+// Root help page
 app.get("/", (req, res) => {
   res.send(`
     <h1>DFS Recipe API</h1>
-    <p>Use <code>/name?name=yourquery</code> to search.</p>
+    <p>Use <code>/name?name=yourquery</code> to search by item name.</p>
     <ul>
-      <li><code>?name=strawberry</code> - search for recipes</li>
-      <li><code>&human=1</code> - returns HTML with ingredient list and image</li>
-      <li><code>&page=2</code> - paginated HTML</li>
+      <li><code>/name?name=strawberry</code> - search for recipes</li>
+      <li><code>&human=1</code> - returns HTML with ingredients and image</li>
+      <li><code>&page=2</code> - optional pagination for HTML view</li>
     </ul>
   `);
 });
