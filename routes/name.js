@@ -53,10 +53,11 @@ router.get("/", async (req, res) => {
 
     const limited = matching.slice(0, limit);
 
-    res.json(matching.map(r => ({
+    res.json(limited.map(r => ({
       id: r.id,
       item_output: r.item_output
     })));
+    
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message || "Server error" });
