@@ -1,6 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const nameRoutes = require("./routes/name");
+const nameRoutes = require("./routes/recipe");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -9,6 +10,7 @@ app.use(cors());
 
 // Use name routes
 app.use("/name", nameRoutes);
+app.use("/recipe", recipeRoutes);
 
 // Root help page
 app.get("/", (req, res) => {
