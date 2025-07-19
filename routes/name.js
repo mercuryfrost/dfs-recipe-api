@@ -5,6 +5,7 @@ const router = express.Router();
 router.get("/", async (req, res) => {
   try {
     const name = req.query.name?.toLowerCase();
+    const limit = parseInt(req.query.limit) || 75;
     const human = req.query.human;
     const page = parseInt(req.query.page) || 1;
     const pageSize = 9;
@@ -49,6 +50,8 @@ router.get("/", async (req, res) => {
 
       return res.send(html);
     }
+
+    const limited = matching.slice(0, limit);
 
     res.json(matching.map(r => ({
       id: r.id,
