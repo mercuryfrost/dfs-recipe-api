@@ -29,7 +29,7 @@ async function loadRecipes() {
 }
 
 // GET /recipe?id=1234
-router.get("/recipe", async (req, res) => {
+router.get("/", async (req, res) => {
   try {
     const id = req.query.id;
     if (!id) {
