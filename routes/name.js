@@ -5,7 +5,7 @@ const router = express.Router();
 router.get("/", async (req, res) => {
   try {
     const name = req.query.name?.toLowerCase();
-    const limit = parseInt(req.query.limit) || 75;
+    const limit = parseInt(req.query.limit) || 999;
     const human = req.query.human;
     const page = parseInt(req.query.page) || 1;
     const pageSize = 9;
